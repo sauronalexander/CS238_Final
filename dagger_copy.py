@@ -95,42 +95,75 @@ model.fit(images_all, actions_all,
               nb_epoch=nb_epoch,
               shuffle=True)
 
-# the neural network for discriminator
-'''
-cond = Input(batch_shape(batch_size, 1))
-cnn = Sequential()
-cnn.add(Conv2D(32, (3, 3), padding='same',
-                 input_shape=images_all.shape[1:]))
-cnn.add(Activation('relu'))
-cnn.add(Conv2D(32, (3, 3)))
-cnn.add(Activation('relu'))
-cnn.add(MaxPooling2D(pool_size=(2, 2)))
-cnn.add(Dropout(0.5))
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.autograd import Variable
+import itertools
 
-cnn.add(Conv2D(64, (3, 3), padding='same'))
-cnn.add(Activation('relu'))
-cnn.add(Conv2D(64, (3, 3)))
-cnn.add(Activation('relu'))
-cnn.add(MaxPooling2D(pool_size=(2, 2)))
-cnn.add(Dropout(0.5))
+class Policy(nn.Module):
+    def __init__(self):
+        super(Policy, self).__init__()
+        self.layer1 = nn.Sequential(
+            nn.Conv2d(3, 16, kernel_size=5, padding=2),
+            nn.BatchNorm2d(16),
+            nn.ReLU(),
+            nn.MaxPool2d(2))
+        self.layer2 = nn.Sequential(
+            nn.Conv2d(16, 32, kernel_size=5, padding=2),
+            nn.BatchNorm2d(32),
+            nn.ReLU(),
+            nn.MaxPool2d(2))
 
-cnn.add(Flatten())
-cnn.add(Dense(10))
+        hidden_size = 64 # determine this ...  from below
+        self.aff_mu = nn.Linear(hidden_size, hidden_size)
+        self.aff_log_std = nn.Linear(hidden_size, hidden_size)
 
-merged = Concatenate([cnn, cond])
-result = Dense(1, activation='sigmoid')(merged)
+        self.aff2_mu = nn.Linear(hidden_size, 1)
+        self.aff2_log_std = nn.Linear(hidden_size, 1)
 
-result.compile(
-    optimizer=Adam(lr=1e-4), 
-    loss='mean_squared_error',
-    metrics=['mean_squared_error'])
+        self.act = nn.ReLU()
+        self.final = nn.Tanh()
 
-result.fit([images_all, actions_all], 
-    batch_size=batch_size,
-    nb_epoch=nb_epoch,
-    shuffle=True,)
+    def forward(self, x):
+        out = self.layer1(x)
+        out = self.layer2(out)
+        out = out.view(out.size(0), -1)
+        print out.size() # you can determine hidden_size from here
+        mu = self.final(self.aff2_mu(self.act(self.aff_mu(out))))
+        log_std = self.final(self.aff2_log_std(self.act(self.aff_log_std(out))))
 
-'''
+        std = torch.exp(log_std)
+
+        return mu, log_std, std
+
+def normal_log_density(x, mean, log_std, std):
+    var = std.pow(2)
+    log_density = -(x - mean).pow(2) / (
+        2 * var) - 0.5 * math.log(2 * math.pi) - log_std
+    return log_density.sum(1, keepdim=True)
+
+
+images_var = Variable(torch.from_numpy(images_all))
+actions_var = Variable(torch.from_numpy(actions_all))
+
+policy_net = Policy()
+params = itertools.ifilter(
+    lambda x: x.requires_grad, policy_net.parameters()
+)
+
+# define the optimizer to use; currently use Adam
+opt = optim.Adam(
+    params, lr=1e-4, weight_decay=1e-3
+)
+
+# train for 10 times
+for i in xrange(10):
+    opt.zero_grad()
+    mean, log_std, std = policy_net(images_var)
+    loss = normal_log_density(actions_var, mean, log_std, std)
+    opt.step()
+
 
 output_file = open('results.txt', 'w')
 
@@ -176,9 +209,15 @@ def LookAhead(tau, ob, prev_act, alpha):
     else:
         return exp_act, 0, include_prev
 
-def NN(ob):
-    nov_act = model.predict(img_reshape(ob.img).astype('float32')/255)
-    exp_act = np.reshape(get_teacher_action(ob), [1,action_dim])
+def NN(ob, c):
+    inp = img_reshape(ob.img).astype('float32')/255
+    mean, log_std, std = policy_net(Variable(torch.from_numpy(inp)))
+    c1 = c+1
+    while c1 > c:
+        c1 = np.random.randn()
+
+    nov_act = mean.data[0] + c1 * std.data[0]
+    return nov_act
 
 def test():
     env = TorcsEnv(vision=True, throttle=False)
@@ -218,6 +257,9 @@ for itr in range(dagger_itr):
         #act, is_nov, include_prev = LookAhead(0.08, ob, prev_act, 0.1)
         #if include_prev and not prev_included:
         #    ob_list.append(prev_ob)
+        #
+        #act = NN(ob, 0.5)
+        #is_nov = 0 # in case of NN, we always append
         prev_act = act
         is_nov = 0
         nov_count += is_nov
@@ -247,6 +289,16 @@ for itr in range(dagger_itr):
         images_all = np.concatenate([images_all, img_reshape(ob.img).astype('float32')/255], axis=0)
         actions_all = np.concatenate([actions_all, np.reshape(get_teacher_action(ob), [1,action_dim])], axis=0)
 
+    # in NN case
+    '''
+    images_var = Variable(torch.from_numpy(images_all))
+    actions_var = Variable(torch.from_numpy(actions_all))
+    for i in xrange(10):
+        opt.zero_grad()
+        mean, log_std, std = policy_net(images_var)
+        loss = normal_log_density(actions_var, mean, log_std, std)
+        opt.step()
+    '''
     model.fit(images_all, actions_all,
                   batch_size=batch_size,
                   nb_epoch=nb_epoch,
