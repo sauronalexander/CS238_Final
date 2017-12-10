@@ -1,6 +1,6 @@
 from gym_torcs import TorcsEnv
 import numpy as np
-import cv2
+#import cv2
 
 img_dim = [64,64,3]
 action_dim = 1
@@ -31,7 +31,7 @@ env = TorcsEnv(vision=True, throttle=False)
 ob = env.reset(relaunch=True)
 
 print('Collecting data...')
-for i in range(100):
+for i in range(500):
     if i == 0:
         act = np.array([0.0])
     else:
@@ -95,74 +95,74 @@ model.fit(images_all, actions_all,
               nb_epoch=nb_epoch,
               shuffle=True)
 
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.autograd import Variable
-import itertools
+# import torch
+# import torch.nn as nn
+# import torch.optim as optim
+# from torch.autograd import Variable
+# import itertools
 
-class Policy(nn.Module):
-    def __init__(self):
-        super(Policy, self).__init__()
-        self.layer1 = nn.Sequential(
-            nn.Conv2d(3, 16, kernel_size=5, padding=2),
-            nn.BatchNorm2d(16),
-            nn.ReLU(),
-            nn.MaxPool2d(2))
-        self.layer2 = nn.Sequential(
-            nn.Conv2d(16, 32, kernel_size=5, padding=2),
-            nn.BatchNorm2d(32),
-            nn.ReLU(),
-            nn.MaxPool2d(2))
+# class Policy(nn.Module):
+#     def __init__(self):
+#         super(Policy, self).__init__()
+#         self.layer1 = nn.Sequential(
+#             nn.Conv2d(3, 16, kernel_size=5, padding=2),
+#             nn.BatchNorm2d(16),
+#             nn.ReLU(),
+#             nn.MaxPool2d(2))
+#         self.layer2 = nn.Sequential(
+#             nn.Conv2d(16, 32, kernel_size=5, padding=2),
+#             nn.BatchNorm2d(32),
+#             nn.ReLU(),
+#             nn.MaxPool2d(2))
 
-        hidden_size = 64 # determine this ...  from below
-        self.aff_mu = nn.Linear(hidden_size, hidden_size)
-        self.aff_log_std = nn.Linear(hidden_size, hidden_size)
+#         hidden_size = 64 # determine this ...  from below
+#         self.aff_mu = nn.Linear(hidden_size, hidden_size)
+#         self.aff_log_std = nn.Linear(hidden_size, hidden_size)
 
-        self.aff2_mu = nn.Linear(hidden_size, 1)
-        self.aff2_log_std = nn.Linear(hidden_size, 1)
+#         self.aff2_mu = nn.Linear(hidden_size, 1)
+#         self.aff2_log_std = nn.Linear(hidden_size, 1)
 
-        self.act = nn.ReLU()
-        self.final = nn.Tanh()
+#         self.act = nn.ReLU()
+#         self.final = nn.Tanh()
 
-    def forward(self, x):
-        out = self.layer1(x)
-        out = self.layer2(out)
-        out = out.view(out.size(0), -1)
-        print out.size() # you can determine hidden_size from here
-        mu = self.final(self.aff2_mu(self.act(self.aff_mu(out))))
-        log_std = self.final(self.aff2_log_std(self.act(self.aff_log_std(out))))
+#     def forward(self, x):
+#         out = self.layer1(x)
+#         out = self.layer2(out)
+#         out = out.view(out.size(0), -1)
+#         print(out.size()) # you can determine hidden_size from here
+#         mu = self.final(self.aff2_mu(self.act(self.aff_mu(out))))
+#         log_std = self.final(self.aff2_log_std(self.act(self.aff_log_std(out))))
 
-        std = torch.exp(log_std)
+#         std = torch.exp(log_std)
 
-        return mu, log_std, std
+#         return mu, log_std, std
 
-def normal_log_density(x, mean, log_std, std):
-    var = std.pow(2)
-    log_density = -(x - mean).pow(2) / (
-        2 * var) - 0.5 * math.log(2 * math.pi) - log_std
-    return log_density.sum(1, keepdim=True)
+# def normal_log_density(x, mean, log_std, std):
+#     var = std.pow(2)
+#     log_density = -(x - mean).pow(2) / (
+#         2 * var) - 0.5 * math.log(2 * math.pi) - log_std
+#     return log_density.sum(1, keepdim=True)
 
 
-images_var = Variable(torch.from_numpy(images_all))
-actions_var = Variable(torch.from_numpy(actions_all))
+# images_var = Variable(torch.from_numpy(images_all))
+# actions_var = Variable(torch.from_numpy(actions_all))
 
-policy_net = Policy()
-params = itertools.ifilter(
-    lambda x: x.requires_grad, policy_net.parameters()
-)
+# policy_net = Policy()
+# params = itertools.ifilter(
+#     lambda x: x.requires_grad, policy_net.parameters()
+# )
 
-# define the optimizer to use; currently use Adam
-opt = optim.Adam(
-    params, lr=1e-4, weight_decay=1e-3
-)
+# # define the optimizer to use; currently use Adam
+# opt = optim.Adam(
+#     params, lr=1e-4, weight_decay=1e-3
+# )
 
-# train for 10 times
-for i in xrange(10):
-    opt.zero_grad()
-    mean, log_std, std = policy_net(images_var)
-    loss = normal_log_density(actions_var, mean, log_std, std)
-    opt.step()
+# # train for 10 times
+# for i in range(10):
+#     opt.zero_grad()
+#     mean, log_std, std = policy_net(images_var)
+#     loss = normal_log_density(actions_var, mean, log_std, std)
+#     opt.step()
 
 
 output_file = open('results.txt', 'w')
@@ -230,9 +230,11 @@ def test():
         act = model.predict(img_reshape(ob.img).astype('float32')/255)
         #print(act)
         count += 1
-        ob, reward, done, _ = env.step(act)        
+        ob, reward, done, _ = env.step(act)
+        reward_sum += reward    
     env.end()
-    print("Steps before crash: ", count)
+    print("Steps before crash: ", count, reward_sum)
+    return count, reward_sum
 
 #aggregate and retrain
 dagger_itr = 5
@@ -253,7 +255,7 @@ for itr in range(dagger_itr):
     for i in range(T):
         #act = DAgger(lam, i, ob)
         #act, is_nov = SafeDAgger(0.05, ob)
-        #act = LinearCombo(0.9, i, ob, 0.05)
+        act = LinearCombo(0.9, i, ob, 0.05)
         #act, is_nov, include_prev = LookAhead(0.08, ob, prev_act, 0.1)
         #if include_prev and not prev_included:
         #    ob_list.append(prev_ob)
@@ -280,10 +282,11 @@ for itr in range(dagger_itr):
             prev_included = False
 
     print('Episode done ', itr, i, reward_sum)
-    output_file.write('Number of Steps: %02d\t Reward: %0.04f\n'%(i, reward_sum))
+    
     env.end()
 
-    test()
+    count, reward_sum_t = test()
+    output_file.write('Number of Steps: %02d\t Reward: %0.04f\n'%(count, reward_sum_t))
 
     for ob in ob_list:
         images_all = np.concatenate([images_all, img_reshape(ob.img).astype('float32')/255], axis=0)
