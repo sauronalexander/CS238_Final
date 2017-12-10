@@ -1,0 +1,5 @@
+Number of Steps: 511	 Reward: 21918.7132
+Number of Steps: 489	 Reward: 22197.4658
+Number of Steps: 356	 Reward: 13985.8825
+Number of Steps: 504	 Reward: 22144.0343
+Number of Steps: 319	 Reward: 13977.3401
