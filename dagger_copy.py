@@ -163,14 +163,18 @@ def LinearCombo(lam, t, ob, threshold):
     else:
         return predicted_act
 
-def LookAhead(tau, ob, prev_act):
+def LookAhead(tau, ob, prev_act, alpha):
     nov_act = model.predict(img_reshape(ob.img).astype('float32')/255)
     exp_act = np.reshape(get_teacher_action(ob), [1,action_dim])
-    diff = np.sqrt(np.square(prev_act - exp_act) + np.square(nov_act - exp_act))
+    cos = nov_act * exp_act / np.sqrt(nov_act **2 * exp_act **2)
+    include_prev = False
+    if cos < alpha:
+        include_prev = True
+    diff = np.sqrt(np.square(nov_act - exp_act))
     if diff < tau:
-        return nov_act, 1
+        return nov_act, 1, include_prev
     else:
-        return exp_act, 0
+        return exp_act, 0, include_prev
 
 def NN(ob):
     nov_act = model.predict(img_reshape(ob.img).astype('float32')/255)
@@ -205,11 +209,15 @@ for itr in range(dagger_itr):
 
     nov_count = 0
     prev_act = np.array([0])
+    prev_included = False
+    prev_ob = ob
     for i in range(T):
         #act = DAgger(lam, i, ob)
         #act, is_nov = SafeDAgger(0.05, ob)
         #act = LinearCombo(0.9, i, ob, 0.05)
-        #act, is_nov = LookAhead(0.08, ob, prev_act)
+        #act, is_nov, include_prev = LookAhead(0.08, ob, prev_act, 0.1)
+        #if include_prev and not prev_included:
+        #    ob_list.append(prev_ob)
         prev_act = act
         is_nov = 0
         nov_count += is_nov
@@ -224,6 +232,10 @@ for itr in range(dagger_itr):
 
         if is_nov == 0:
             ob_list.append(ob)
+            prev_included = True
+        else:
+            prev_ob = ob
+            prev_included = False
 
     print('Episode done ', itr, i, reward_sum)
     output_file.write('Number of Steps: %02d\t Reward: %0.04f\n'%(i, reward_sum))
